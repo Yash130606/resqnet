@@ -1,0 +1,5 @@
+node_modules/
+*.local
+functions/.env
+.env
+android/app/google-services.json
