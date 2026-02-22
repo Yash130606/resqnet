@@ -39,26 +39,22 @@ class _SosReportScreenState extends State<SosReportScreen> {
 
   // ✅ Send SMS via TextBelt (1 free SMS per day for demo)
   Future<void> sendSms(String phone, String message) async {
-    final url = Uri.parse('https://textbelt.com/text');
+    final url = Uri.parse(
+      'https://2factor.in/API/V1/390f255e-0fbc-11f1-bcb0-0200cd936042/ADDON_SERVICES/SEND/TSMS',
+    );
 
     try {
       final response = await http.post(
         url,
         body: {
-          'phone': '+91$phone',
-          'message': message,
-          'key': 'textbelt', // free key — 1 SMS per day
+          'From': 'RESQNT',
+          'To': phone,
+          'TemplateMessage': message,
         },
       );
 
       print('📱 SMS Status: ${response.statusCode}');
       print('📱 SMS Response: ${response.body}');
-
-      if (response.statusCode == 200) {
-        print('✅ SMS sent successfully');
-      } else {
-        print('❌ SMS failed: ${response.body}');
-      }
     } catch (e) {
       print('❌ SMS Exception: $e');
     }

@@ -66,5 +66,9 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSMicrophoneUsageDescription</key>
+  <string>ResQNet needs microphone access for voice emergency assistance</string>
+  <key>NSSpeechRecognitionUsageDescription</key>
+  <string>ResQNet uses speech recognition so you can speak your emergency</string>
 </dict>
 </plist>

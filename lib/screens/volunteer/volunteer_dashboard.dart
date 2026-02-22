@@ -62,28 +62,34 @@ class _VolunteerDashboardState extends State<VolunteerDashboard> {
   void initState() {
     super.initState();
     _loadVolunteerData();
-    _saveMyLocation(); // ← Save location on app open
+    _saveMyLocation();
   }
 
-  // ── SAVE LOCATION TO FIRESTORE ─────────────────────
   Future<void> _saveMyLocation() async {
     try {
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user!.uid)
-          .update({
-        'location': {
-          'lat': 18.5204, // Change per volunteer for demo
-          'lng': 73.8567,
-        },
-        'availability': true,
-      });
-    } catch (e) {
-      // If update fails (new user), use set with merge
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return;
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.deniedForever) return;
+
+      Position position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high);
+
+      final locationData = {
+        'lat': position.latitude,
+        'lng': position.longitude,
+      };
+
       await FirebaseFirestore.instance.collection('users').doc(user!.uid).set({
-        'location': {'lat': 18.5204, 'lng': 73.8567},
+        'location': locationData,
         'availability': true,
       }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('Location save failed: $e');
     }
   }
 
@@ -136,7 +142,6 @@ class _VolunteerDashboardState extends State<VolunteerDashboard> {
 
       double distance = 0;
 
-      // 🔥 Only calculate distance if lat/lng exist
       if (data.containsKey('latitude') && data.containsKey('longitude')) {
         final double citizenLat = data['latitude'];
         final double citizenLng = data['longitude'];
@@ -320,7 +325,6 @@ class _VolunteerDashboardState extends State<VolunteerDashboard> {
   }
 
   // ─── TAB 1: MY TASKS ──────────────────────────────
-// ─── TAB 1: MY TASKS (FIXED VERSION) ─────────────────────────────
   Widget _myTasksTab() {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
@@ -415,7 +419,6 @@ class _VolunteerDashboardState extends State<VolunteerDashboard> {
             final sosDocs = sosSnapshot.data!.docs;
             final emergencyDocs = emergencySnapshot.data!.docs;
 
-            // 🔥 Merge both lists
             final allDocs = [
               ...sosDocs.map((d) => {"doc": d, "source": "sos"}),
               ...emergencyDocs.map((d) => {"doc": d, "source": "emergency"}),
@@ -435,14 +438,8 @@ class _VolunteerDashboardState extends State<VolunteerDashboard> {
               children: allDocs.map((item) {
                 final doc = item["doc"] as QueryDocumentSnapshot;
                 final String source = item["source"] as String;
-
                 final data = doc.data() as Map<String, dynamic>;
-
-                return _availableTaskCard(
-                  doc.id,
-                  data,
-                  source,
-                );
+                return _availableTaskCard(doc.id, data, source);
               }).toList(),
             );
           },
@@ -458,7 +455,6 @@ class _VolunteerDashboardState extends State<VolunteerDashboard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
@@ -482,7 +478,6 @@ class _VolunteerDashboardState extends State<VolunteerDashboard> {
 
           const SizedBox(height: 16),
 
-          // Your location card
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
@@ -511,7 +506,7 @@ class _VolunteerDashboardState extends State<VolunteerDashboard> {
                           style: const TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.bold)),
-                      const Text('📍 Pune, Maharashtra',
+                      const Text('📍 Location tracked via GPS',
                           style: TextStyle(color: Colors.grey, fontSize: 12)),
                       Text(
                         'Skills: ${_mySkills.isEmpty ? "None selected" : _mySkills.join(", ")}',
@@ -550,7 +545,6 @@ class _VolunteerDashboardState extends State<VolunteerDashboard> {
               style: TextStyle(color: Colors.grey, fontSize: 12)),
           const SizedBox(height: 12),
 
-          // Dummy nearby volunteers
           ..._nearbyVolunteers.asMap().entries.map((entry) {
             final i = entry.key;
             final v = entry.value;
@@ -565,7 +559,6 @@ class _VolunteerDashboardState extends State<VolunteerDashboard> {
               ),
               child: Row(
                 children: [
-                  // Rank badge
                   Container(
                     width: 32,
                     height: 32,
@@ -588,7 +581,6 @@ class _VolunteerDashboardState extends State<VolunteerDashboard> {
                   ),
                   const SizedBox(width: 12),
 
-                  // Volunteer info
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -640,7 +632,6 @@ class _VolunteerDashboardState extends State<VolunteerDashboard> {
                     ),
                   ),
 
-                  // Status badge
                   Container(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -663,7 +654,6 @@ class _VolunteerDashboardState extends State<VolunteerDashboard> {
 
           const SizedBox(height: 16),
 
-          // How auto assign works
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -784,7 +774,7 @@ class _VolunteerDashboardState extends State<VolunteerDashboard> {
 
           const SizedBox(height: 16),
 
-          // Location card
+          // ── FIXED: removed `const` from this Container/StreamBuilder ──
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
@@ -796,19 +786,41 @@ class _VolunteerDashboardState extends State<VolunteerDashboard> {
               children: [
                 const Icon(Icons.my_location, color: Colors.blue, size: 20),
                 const SizedBox(width: 12),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Saved Location',
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600)),
-                      Text('Pune, Maharashtra',
-                          style: TextStyle(color: Colors.grey, fontSize: 12)),
-                      Text('18.5204° N, 73.8567° E',
-                          style: TextStyle(color: Colors.grey, fontSize: 11)),
-                    ],
+                Expanded(
+                  child: StreamBuilder<DocumentSnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(user!.uid)
+                        .snapshots(),
+                    builder: (context, locSnap) {
+                      final locData =
+                          locSnap.data?.data() as Map<String, dynamic>?;
+                      final loc = locData?['location'];
+                      final double? lat = loc?['lat']?.toDouble();
+                      final double? lng = loc?['lng']?.toDouble();
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Saved Location',
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600)),
+                          Text(
+                            lat != null
+                                ? 'GPS Location Saved'
+                                : 'Location not saved',
+                            style: const TextStyle(
+                                color: Colors.grey, fontSize: 12),
+                          ),
+                          if (lat != null)
+                            Text(
+                              '${lat.toStringAsFixed(4)}° N, ${lng?.toStringAsFixed(4)}° E',
+                              style: const TextStyle(
+                                  color: Colors.grey, fontSize: 11),
+                            ),
+                        ],
+                      );
+                    },
                   ),
                 ),
                 Container(
@@ -950,7 +962,8 @@ class _VolunteerDashboardState extends State<VolunteerDashboard> {
                         fontSize: 15)),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: isPending
                       ? Colors.orange.withOpacity(0.2)
@@ -971,7 +984,8 @@ class _VolunteerDashboardState extends State<VolunteerDashboard> {
           if (distance != null)
             Container(
               margin: const EdgeInsets.only(bottom: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: BoxDecoration(
                 color: Colors.green.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
@@ -1021,7 +1035,8 @@ class _VolunteerDashboardState extends State<VolunteerDashboard> {
                   decoration: BoxDecoration(
                     color: Colors.orange.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.orange.withOpacity(0.4)),
+                    border:
+                        Border.all(color: Colors.orange.withOpacity(0.4)),
                   ),
                   child: const Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -1030,7 +1045,8 @@ class _VolunteerDashboardState extends State<VolunteerDashboard> {
                           color: Colors.orange, size: 16),
                       SizedBox(width: 8),
                       Text('Waiting for Admin Confirmation',
-                          style: TextStyle(color: Colors.orange, fontSize: 13)),
+                          style:
+                              TextStyle(color: Colors.orange, fontSize: 13)),
                     ],
                   ),
                 )
@@ -1059,16 +1075,42 @@ class _VolunteerDashboardState extends State<VolunteerDashboard> {
     );
   }
 
+  List<String> _matchedSkills(Map<String, dynamic> data) {
+    final String type =
+        (data['type'] ?? data['emergencyType'] ?? '').toLowerCase();
+    final List<String> required = _requiredSkillsForType(type);
+    return required.where((s) => _mySkills.contains(s)).toList();
+  }
+
+  List<String> _requiredSkillsForType(String type) {
+    switch (type) {
+      case 'flood':
+        return ['Rescue', 'Logistics'];
+      case 'fire':
+        return ['Rescue', 'Medical'];
+      case 'earthquake':
+        return ['Rescue', 'Medical', 'Shelter Setup'];
+      case 'medical':
+        return ['Medical'];
+      case 'medical emergency':
+        return ['Medical'];
+      case 'trapped person':
+        return ['Rescue'];
+      case 'food / water required':
+        return ['Food Distribution', 'Logistics'];
+      case 'shelter needed':
+        return ['Shelter Setup', 'Logistics'];
+      default:
+        return [];
+    }
+  }
+
   Widget _availableTaskCard(
       String docId, Map<String, dynamic> data, String source) {
     Color typeColor = const Color(0xFFD32F2F);
     IconData typeIcon = Icons.warning;
     final bool isSOS = source == "sos";
 
-    final Color sourceColor = isSOS ? Colors.red : Colors.blue;
-
-    final String sourceLabel =
-        isSOS ? "🆘 SOS (No Login)" : "⚡ Emergency (Logged In)";
     switch ((data['type'] ?? '').toLowerCase()) {
       case 'flood':
         typeColor = Colors.blue;
@@ -1088,13 +1130,31 @@ class _VolunteerDashboardState extends State<VolunteerDashboard> {
         break;
     }
 
+    final String type =
+        (data['type'] ?? data['emergencyType'] ?? '').toLowerCase();
+    final List<String> requiredSkills = _requiredSkillsForType(type);
+    final List<String> myMatchedSkills = _matchedSkills(data);
+    final bool hasSkillMatch =
+        myMatchedSkills.isNotEmpty || requiredSkills.isEmpty;
+    final bool noMatchAtAll =
+        requiredSkills.isNotEmpty && myMatchedSkills.isEmpty;
+
+    final int peopleCount = data['peopleCount'] ?? 1;
+    final int volunteersNeeded = data['volunteersNeeded'] ?? 1;
+
+    final Color borderColor = noMatchAtAll
+        ? Colors.grey.withOpacity(0.2)
+        : hasSkillMatch
+            ? Colors.green.withOpacity(0.4)
+            : typeColor.withOpacity(0.3);
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: const Color(0xFF1E1E1E),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: typeColor.withOpacity(0.3)),
+        border: Border.all(color: borderColor, width: hasSkillMatch ? 1.5 : 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1118,13 +1178,16 @@ class _VolunteerDashboardState extends State<VolunteerDashboard> {
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
                             fontSize: 15)),
-                    const Text('Needs Volunteer',
-                        style: TextStyle(color: Colors.grey, fontSize: 11)),
+                    Text(
+                      isSOS ? '🆘 SOS (No Login)' : '⚡ Emergency (Logged In)',
+                      style: const TextStyle(color: Colors.grey, fontSize: 11),
+                    ),
                   ],
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                     color: Colors.orange.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(10)),
@@ -1136,7 +1199,82 @@ class _VolunteerDashboardState extends State<VolunteerDashboard> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
+
+          const SizedBox(height: 10),
+
+          if (hasSkillMatch && requiredSkills.isNotEmpty)
+            Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.green.withOpacity(0.4)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.verified, color: Colors.green, size: 15),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      '✅ Skill match: ${myMatchedSkills.join(", ")}',
+                      style: const TextStyle(
+                          color: Colors.green,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else if (noMatchAtAll)
+            Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.orange.withOpacity(0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline,
+                      color: Colors.orange, size: 15),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Needs: ${requiredSkills.join(", ")} — not in your skills',
+                      style:
+                          const TextStyle(color: Colors.orange, fontSize: 12),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+          if (peopleCount > 1 || volunteersNeeded > 1) ...[
+            Row(
+              children: [
+                _volInfoBadge(
+                  icon: Icons.people,
+                  label:
+                      '$peopleCount ${peopleCount == 1 ? "person" : "people"}',
+                  color: Colors.amber,
+                ),
+                const SizedBox(width: 8),
+                _volInfoBadge(
+                  icon: Icons.volunteer_activism,
+                  label:
+                      '$volunteersNeeded volunteer${volunteersNeeded == 1 ? "" : "s"} needed',
+                  color: Colors.cyan,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+          ],
+
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
@@ -1148,7 +1286,8 @@ class _VolunteerDashboardState extends State<VolunteerDashboard> {
                   const Icon(Icons.location_on, color: Colors.grey, size: 14),
                   const SizedBox(width: 6),
                   Expanded(
-                      child: Text(data['location'] ?? '-',
+                      child: Text(
+                          data['locationName'] ?? data['location'] ?? '-',
                           style: const TextStyle(
                               color: Colors.white70, fontSize: 13))),
                 ]),
@@ -1180,7 +1319,9 @@ class _VolunteerDashboardState extends State<VolunteerDashboard> {
               ],
             ),
           ),
+
           const SizedBox(height: 12),
+
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
@@ -1188,24 +1329,36 @@ class _VolunteerDashboardState extends State<VolunteerDashboard> {
                   ? () => _acceptTask(
                         docId,
                         data['type'] ?? '',
-                        data['location'] ?? '',
+                        data['locationName'] ?? data['location'] ?? '',
                         source,
                       )
                   : null,
               style: ElevatedButton.styleFrom(
-                backgroundColor: _isAvailable
-                    ? const Color(0xFFD32F2F)
-                    : Colors.grey.shade800,
+                backgroundColor: !_isAvailable
+                    ? Colors.grey.shade800
+                    : hasSkillMatch
+                        ? Colors.green
+                        : const Color(0xFFD32F2F),
                 padding: const EdgeInsets.symmetric(vertical: 13),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10)),
               ),
-              icon: Icon(_isAvailable ? Icons.volunteer_activism : Icons.block,
-                  size: 18),
+              icon: Icon(
+                !_isAvailable
+                    ? Icons.block
+                    : hasSkillMatch
+                        ? Icons.star
+                        : Icons.volunteer_activism,
+                size: 18,
+              ),
               label: Text(
-                _isAvailable ? 'ACCEPT & RESPOND' : 'GO ONLINE TO ACCEPT',
-                style:
-                    const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                !_isAvailable
+                    ? 'GO ONLINE TO ACCEPT'
+                    : hasSkillMatch
+                        ? 'ACCEPT — SKILL MATCHED ✓'
+                        : 'ACCEPT & RESPOND',
+                style: const TextStyle(
+                    fontWeight: FontWeight.bold, fontSize: 13),
               ),
             ),
           ),
@@ -1214,7 +1367,31 @@ class _VolunteerDashboardState extends State<VolunteerDashboard> {
     );
   }
 
-  // ─── HELPERS ──────────────────────────────────────
+  Widget _volInfoBadge({
+    required IconData icon,
+    required String label,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.35)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 12),
+          const SizedBox(width: 4),
+          Text(label,
+              style: TextStyle(
+                  color: color, fontSize: 11, fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+
   Widget _stepRow(String step, String text, Color color) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -1249,8 +1426,9 @@ class _VolunteerDashboardState extends State<VolunteerDashboard> {
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 9),
           decoration: BoxDecoration(
-            color:
-                isSelected ? const Color(0xFFD32F2F) : const Color(0xFF2A2A2A),
+            color: isSelected
+                ? const Color(0xFFD32F2F)
+                : const Color(0xFF2A2A2A),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Column(
@@ -1264,35 +1442,6 @@ class _VolunteerDashboardState extends State<VolunteerDashboard> {
                       fontWeight: FontWeight.w600)),
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _statCard(String label, String value, IconData icon, Color color) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-            color: const Color(0xFF1E1E1E),
-            borderRadius: BorderRadius.circular(16)),
-        child: Row(
-          children: [
-            Icon(icon, color: color, size: 30),
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(value,
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold)),
-                Text(label,
-                    style: const TextStyle(color: Colors.grey, fontSize: 11)),
-              ],
-            ),
-          ],
         ),
       ),
     );
@@ -1361,25 +1510,3 @@ class _VolunteerDashboardState extends State<VolunteerDashboard> {
     }
   }
 }
-// ```
-
-// ---
-
-// ## ✅ What's New
-// ```
-// 🆕 _saveMyLocation() called in initState
-//    → Saves lat/lng to Firestore on every login
-//    → Uses merge so it won't overwrite other fields
-
-// 🆕 NEARBY TAB (replaced History)
-//    → Shows 4 dummy nearby volunteers
-//    → Ranked #1 #2 #3 #4 by distance
-//    → NEAREST badge on #1
-//    → Color coded Online/Busy status
-//    → "How Smart Assignment Works" explainer
-
-// 🆕 MY TASKS shows distance badge
-//    → "You were X km away — nearest volunteer!"
-
-// 🆕 Location card in Profile + My Tasks tab
-//    → Shows saved coordinates
